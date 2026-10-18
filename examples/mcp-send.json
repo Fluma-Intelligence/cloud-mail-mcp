@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "cloud-mail": {
+      "command": "node",
+      "args": [
+        "--env-file=/absolute/path/to/cloud-mail-mcp/.env",
+        "/absolute/path/to/cloud-mail-mcp/dist/index.js"
+      ],
+      "env": {
+        "MAIL_ENABLE_WRITE": "true"
+      }
+    }
+  }
+}

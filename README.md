@@ -51,6 +51,39 @@ node --env-file=.env examples/smoke.mjs
 
 需要发送、回复或标记已读时，设置 `MAIL_ENABLE_WRITE=true` 后重启 MCP。管理员应为专用用户授予 `account:query`，发信时授予 `email:send`，并配置可用域名、发信模式和发送额度。
 
+## 发信接入
+
+MCP 发信工具包括 `send_message`（新邮件）、`send_draft`（发送本地草稿）和 `reply_message`（回复收件箱邮件），均支持附件。发件身份由当前用户的 `accountId` 决定，省略时使用主邮箱；其他发件地址的 ID 从 `list_mailboxes` 获取。
+
+将 [examples/mcp-send.json](examples/mcp-send.json) 合并到 Agent 的 MCP 配置，替换安装路径。此配置通过 `env.MAIL_ENABLE_WRITE=true` 开启发信；同名的 `cloud-mail` 连接应更新原配置。重启连接后调用 `mail_status`，确认邮箱身份与 `mailboxWritesEnabled:true`，并重新发现上述工具。写入开关也会开放 `mark_read`；实际发信仍需邮箱角色的 `email:send` 权限与可用额度。
+
+### 运行发送示例
+
+完成上面的源码安装后，也可通过示例客户端调用同一套 MCP 发信工具。在私密 `.env` 中设置 `MAIL_ENABLE_WRITE=true`，然后准备发送请求：
+
+```bash
+cp examples/send-message.example.json send.private.json
+chmod 600 send.private.json
+```
+
+在本机编辑 `send.private.json` 的收件人、主题、正文及附件，并将 `operationKey` 替换为本次发送的唯一标识，例如保存一次生成的 UUID。该文件包含真实邮件时保留在私密目录；仓库已忽略 `*.private.json`。
+
+下面的命令会**立即发送**文件中的邮件，输出 API 受理回执：
+
+```bash
+node --env-file=.env examples/send.mjs send.private.json
+```
+
+`send.mjs` 也接受使用 `send_draft` 或 `reply_message` 的请求文件，参数见下文工具调用示例。附件 `content` 为标准 Base64；发送全部附件的解码总大小受 `MAIL_MAX_ATTACHMENT_BYTES` 限制。
+
+按发送时保存的 `operationKey` 查询回执：
+
+```bash
+node --env-file=.env examples/send.mjs --status YOUR_SAVED_OPERATION_KEY
+```
+
+回执查询可在关闭写入时使用。`accepted` 表示 API 已受理；最终投递需在收件端确认。发送超时或 `pending` 时先核对回执与发件箱；保留同一 operationKey 和状态目录，按下文恢复流程处理。
+
 ## 配套 Skills
 
 仓库附带三个可独立安装的技能，每个目录包含 `SKILL.md` 与 `agents/openai.yaml`。技能指导 Agent 使用现有 MCP 工具；安装后仍需按上节配置连接与邮箱凭据。

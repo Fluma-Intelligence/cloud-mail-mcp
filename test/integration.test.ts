@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, readdir, stat } from 'node:fs/promises';
+import { mkdtemp, rm, readdir, stat, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
@@ -40,6 +42,17 @@ async function setup(t: any, writes = false, options: Record<string, string> = {
   return { ...fixture, client, connect, call, stateDir };
 }
 const message = { to: ['sender@example.test'], subject: 'Synthetic outbound', text: '<hello>&' };
+
+const execExample = promisify(execFile);
+async function sendExample(f: { url: string; stateDir: string }, args: string[], writes = true) {
+  const options = { env: { MAIL_BASE_URL: f.url, MAIL_TOKEN: 'fixture-session',
+    MAIL_STATE_DIR: f.stateDir, MAIL_ENABLE_WRITE: String(writes) }, timeout: 15000 };
+  try {
+    return { code: 0, ...await execExample(process.execPath, [resolve('examples/send.mjs'), ...args], options) };
+  } catch (error: any) {
+    return { code: error.code, stdout: String(error.stdout), stderr: String(error.stderr) };
+  }
+}
 
 test('legacy MCP handshake, tool schemas and read-only tool visibility', async t => {
   const f = await setup(t);
@@ -231,4 +244,76 @@ test('configuration rejects unsafe origins and malformed controls', () => {
   assert.throws(() => loadConfig({ MAIL_BASE_URL: 'https://mail.example.test', MAIL_TOKEN: 'test', MAIL_ENABLE_WRITE: 'yes' }));
   assert.throws(() => loadConfig({ MAIL_BASE_URL: 'https://mail.example.test' }));
   assert.equal(loadConfig({ MAIL_BASE_URL: 'https://mail.example.test/api', MAIL_TOKEN: 'test' }).baseUrl, 'https://mail.example.test');
+});
+
+test('send example sends attachments, drafts and replies and reads receipts across processes', async t => {
+  const f = await setup(t, true);
+  const path = join(f.stateDir, 'request.private.json');
+  const request = { name: 'send_message', arguments: { ...message, operationKey: 'example-send',
+    attachments: [{ filename: 'hello.txt', type: 'text/plain', content: 'aGVsbG8=' }] } };
+  await writeFile(path, JSON.stringify(request));
+  const first = await sendExample(f, [path]);
+  assert.equal(first.code, 0, first.stderr);
+  assert.equal(JSON.parse(first.stdout).accepted, true);
+  assert.equal(f.state.sends[0].attachments[0].content, 'aGVsbG8=');
+  const repeat = await sendExample(f, [path]);
+  assert.equal(JSON.parse(repeat.stdout).replayed, true);
+  assert.equal(f.state.sends.length, 1);
+  const receipt = await sendExample(f, ['--status', 'example-send'], false);
+  assert.equal(receipt.code, 0, receipt.stderr);
+  assert.equal(JSON.parse(receipt.stdout).status, 'accepted');
+  assert.equal(JSON.parse(receipt.stdout).receipt.deliveryConfirmed, false);
+
+  const draft = (await f.call('create_draft', message)).data;
+  await writeFile(path, JSON.stringify({ name: 'send_draft', arguments: {
+    draftId: draft.id, revision: draft.revision, operationKey: 'example-draft',
+  } }));
+  assert.equal((await sendExample(f, [path])).code, 0);
+  assert.equal((await f.call('get_draft', { draftId: draft.id })).data.id, draft.id);
+  await writeFile(path, JSON.stringify({ name: 'reply_message', arguments: {
+    emailId: 164, text: 'Synthetic reply', operationKey: 'example-reply',
+  } }));
+  assert.equal((await sendExample(f, [path])).code, 0);
+  assert.equal(f.state.sends.length, 3);
+  assert.equal(f.state.sends[2].sendType, 'reply');
+  assert.equal(f.state.sends[2].emailId, 164);
+  assert.deepEqual(f.state.sends[2].receiveEmail, ['sender@example.test']);
+  assert.ok(!first.stdout.includes(message.text));
+  assert.ok(!first.stdout.includes('fixture-session'));
+});
+
+test('send example requires write configuration and an explicit operation key before connecting', async t => {
+  const f = await setup(t);
+  const path = join(f.stateDir, 'request.private.json');
+  await writeFile(path, JSON.stringify({ name: 'send_message', arguments: { ...message, operationKey: 'disabled' } }));
+  const disabled = await sendExample(f, [path], false);
+  assert.equal(disabled.code, 1);
+  assert.match(disabled.stderr, /MAIL_ENABLE_WRITE=true/);
+  await writeFile(path, JSON.stringify({ name: 'send_message', arguments: message }));
+  const missingKey = await sendExample(f, [path]);
+  assert.equal(missingKey.code, 1);
+  assert.match(missingKey.stderr, /operationKey/);
+  const template = await sendExample(f, [resolve('examples/send-message.example.json')]);
+  assert.equal(template.code, 1);
+  assert.match(template.stderr, /operationKey/);
+  assert.equal(f.state.requests.length, 0);
+  assert.equal(f.state.sends.length, 0);
+});
+
+test('send example exposes pending outcomes and never repeats an uncertain send', async t => {
+  const f = await setup(t, true);
+  f.state.failSend = true;
+  const path = join(f.stateDir, 'request.private.json');
+  await writeFile(path, JSON.stringify({ name: 'send_message', arguments: { ...message, operationKey: 'example-uncertain' } }));
+  const first = await sendExample(f, [path]);
+  assert.equal(first.code, 1);
+  assert.equal(JSON.parse(first.stderr).operationKey, 'example-uncertain');
+  assert.equal(f.state.sends.length, 1);
+  const receipt = await sendExample(f, ['--status', 'example-uncertain'], false);
+  assert.equal(JSON.parse(receipt.stdout).status, 'pending');
+  f.state.failSend = false;
+  const repeat = await sendExample(f, [path]);
+  assert.equal(repeat.code, 1);
+  assert.equal(JSON.parse(repeat.stderr).error.code, 'SEND_UNCERTAIN');
+  assert.equal(f.state.sends.length, 1);
 });

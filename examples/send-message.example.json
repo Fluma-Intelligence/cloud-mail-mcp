@@ -1,0 +1,16 @@
+{
+  "name": "send_message",
+  "arguments": {
+    "to": ["recipient@example.com"],
+    "subject": "Cloud Mail 发信测试",
+    "text": "这是一封合成测试邮件。",
+    "attachments": [
+      {
+        "filename": "hello.txt",
+        "type": "text/plain",
+        "content": "aGVsbG8="
+      }
+    ],
+    "operationKey": "REPLACE_WITH_UNIQUE_OPERATION_KEY"
+  }
+}

@@ -51,6 +51,49 @@ node --env-file=.env examples/smoke.mjs
 
 需要发送、回复或标记已读时，设置 `MAIL_ENABLE_WRITE=true` 后重启 MCP。管理员应为专用用户授予 `account:query`，发信时授予 `email:send`，并配置可用域名、发信模式和发送额度。
 
+## 配套 Skills
+
+仓库附带三个可独立安装的技能，每个目录包含 `SKILL.md` 与 `agents/openai.yaml`。技能指导 Agent 使用现有 MCP 工具；安装后仍需按上节配置连接与邮箱凭据。
+
+| Skill | 用途 | 调用示例 |
+|---|---|---|
+| [cloud-mail-setup](skills/cloud-mail-setup/SKILL.md) | 接入配置、权限检查、只读验证、更新与状态恢复 | `使用 $cloud-mail-setup 检查邮箱连接和可用权限。` |
+| [cloud-mail-read](skills/cloud-mail-read/SKILL.md) | 邮箱选择、分页搜索、正文摘要、附件、按需标记已读 | `使用 $cloud-mail-read 搜索主题含“合同”的邮件，并说明搜索范围。` |
+| [cloud-mail-send](skills/cloud-mail-send/SKILL.md) | 本地草稿、附件发送、线程回复、回执核对 | `使用 $cloud-mail-send 给指定收件人创建会议确认草稿。` |
+
+### Multica 工作区
+
+导入每个技能目录；默认遇到同名技能会报冲突，避免覆盖已有配置：
+
+```bash
+for skill in cloud-mail-setup cloud-mail-read cloud-mail-send; do
+  multica skill import \
+    --url "https://github.com/Fluma-Intelligence/cloud-mail-mcp/tree/main/skills/$skill" \
+    --output json || break
+done
+```
+
+导入成功后，技能出现在工作区技能库。需要指定 Agent 使用时，在其配置中添加技能并配置 MCP；也可使用 `multica agent skills add <agent-id> --skill-ids <skill-id>`，再以 `multica agent skills list <agent-id> --output json` 验证。ID 使用导入结果和 Agent 查询返回的实际值；`add` 保留已有技能。
+
+### 本机 Codex
+
+在仓库根目录执行以下命令，将完整技能目录复制到个人技能目录；已存在的同名目录会跳过：
+
+```bash
+mkdir -p "$HOME/.agents/skills"
+for skill in cloud-mail-setup cloud-mail-read cloud-mail-send; do
+  if [ -e "$HOME/.agents/skills/$skill" ]; then
+    printf '已存在，跳过：%s\n' "$skill"
+  else
+    cp -R "skills/$skill" "$HOME/.agents/skills/"
+  fi
+done
+```
+
+重新打开会话，确认技能出现在可用技能列表。团队也可放到目标项目的 `.agents/skills/`；目录规则见 [官方技能文档](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)。其他支持 `SKILL.md` 的客户端按其安装规则导入完整目录。
+
+技能包含搜索未完成时的续查、草稿版本冲突、回复线程及发送结果不确定时的处理。已读标记和发送遵循用户任务授权；邮件与附件内容按外部数据处理。
+
 ## 配置
 
 | 参数 | 用途 | 默认值 |

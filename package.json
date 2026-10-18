@@ -4,7 +4,7 @@
   "description": "MCP tools for cloud-mail mailboxes, messages, attachments and local drafts",
   "type": "module",
   "bin": { "cloud-mail-mcp": "dist/index.js" },
-  "files": ["dist", "README.md", "LICENSE", "examples"],
+  "files": ["dist", "README.md", "LICENSE", "examples", "skills"],
   "engines": { "node": ">=22.16" },
   "scripts": {
     "build": "tsc -p tsconfig.json",

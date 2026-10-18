@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cloud Mail 邮件读取"
+  short_description: "Search mail, read messages and retrieve attachments"
+  default_prompt: "使用 $cloud-mail-read 列出最近 10 封邮件，概括主题并保留已读状态。"

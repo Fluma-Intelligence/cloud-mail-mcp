@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cloud Mail 接入配置"
+  short_description: "Connect and troubleshoot Cloud Mail MCP"
+  default_prompt: "使用 $cloud-mail-setup 配置 Cloud Mail MCP，并验证当前邮箱的只读连接。"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cloud Mail 草稿与发送"
+  short_description: "Compose drafts, send mail and reconcile send receipts"
+  default_prompt: "使用 $cloud-mail-send 根据我的收件人和正文创建本地草稿，返回草稿 ID 与版本号。"
